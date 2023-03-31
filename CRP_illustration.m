@@ -1,5 +1,4 @@
-function CRP_illustration(fname)
-% function CRP_illustration
+function [crp_projs,crp_parms,bad_trials]=CRP_illustration(fname)
 %
 % This function reproduces all of the figures, etc, from the manuscript
 % "Canonical Response Parameterization: Quantifying the structure of 
@@ -41,6 +40,7 @@ function CRP_illustration(fname)
     
     % post-stimulation end time (in seconds)
     t_2=1;
+   
 
     % COMMENT ONE OPTION IN AND ONE OUT: save figures made?
 %         figsave='y';
@@ -51,8 +51,8 @@ function CRP_illustration(fname)
 %         art_rem.do='n';
 
     % COMMENT ONE OPTION IN AND ONE OUT: if doing artifact removal, test for significance at response duration or at full datalength sent?
-    art_rem.interval='tR'; % testing for projection magnitudes at response duration
-%     art_rem.interval='full'; % testing for projection magnitudes at full datalength sent
+%     art_rem.interval='tR'; % testing for projection magnitudes at response duration
+    art_rem.interval='full'; % testing for projection magnitudes at full datalength sent
 
         
         
@@ -60,10 +60,10 @@ function CRP_illustration(fname)
 %% 2 - Load data
 %  comment lines in and out to run different examples from each figure
 if exist('fname')==1 % true if a filename is sent in
-    load([fname '.mat'])
+    load(['sampledata' filesep fname '.mat'])
 else
     %
-    fname='Fig1_sampledata'; % figure 1 data -- random example data to show V matrix
+%     fname='Fig1_sampledata'; % figure 1 data -- random example data to show V matrix
     %
 %     fname='Fig2_sampledata'; % figure 2 data --  large response with long TR for projection illustration
     %
@@ -98,7 +98,23 @@ else
     %
 %     fname='Fig8_sampledata';
     %
-%     fname='Fig9_eeg_data_zeropad'; % EEG data for artifact removal example. Note that it is zero-padded outside of range used.
+    fname='Fig9_eeg_data_zeropad'; % EEG data for artifact removal example. Note that it is zero-padded outside of range used.
+
+%     %
+%     fname='ramp_dt_50';
+
+% fname='FigX_rightAmygdalaWithSpikes_stim_at_orbitofrontal_WM_0_1';
+
+% fname='FigX_stimRO5-RO6_measRV5_repeats';
+% fname='FigX_stimRO5-RO6_measRV5_repeats_1st_10';
+
+% fname='FigX_w_traces_const_3x';
+% fname='FigX_b_traces_const_3x';
+% fname='FigX_w_traces_var_3x_1x';
+% fname='FigX_b_traces_var_3x_1x';
+
+ %
+%     fname='ramp_dt_50_200';
     %
     load(['sampledata' filesep fname '.mat'])
     %
@@ -113,7 +129,7 @@ end
     % find timepoints 
     if t(1)>=t_1
         error('bad_time_lims 1','error: the first time in the input time vector is greater than the desired starting time')
-    elseif t(end)<=t_2
+    elseif t(end)<t_2
         error('bad_time_lims 1','error: the last time in the input time vector is less than the desired ending time')        
     else
         tpts=find(and(t>t_1,t<=t_2));
@@ -135,13 +151,15 @@ end
         %       
         % conditions to be potentially artifactual
         % 1 -- p<threshold (p<0.000001 seems reasonable in many cases... choose your own criteria)
-            a=p<0.000001;
+%             a=p<0.000001;
+%             a=p<0.001;
+            a=p<10^(-5);
         % 2 -- represents a decrease in projection magnitude
             a=find(a.*(m<mean(m)));
         %
         if sum(a)>0 % identify if any trials are artifactual
             for k=1:length(a)
-                disp(['Trial ' num2str(a) ' appears artifactual, p=' num2str(p(a))])
+                disp(['Trial ' num2str(a(k)) ' appears artifactual, p=' num2str(p(a(k)))])
             end
         disp(['Automatically rejecting bad trials:' num2str(a)])  
         V(:,a)=[];
@@ -151,11 +169,11 @@ end
         %
         end
         %
+        bad_trials=a;
         clear a m p
         %
-        if figsave=='y'
-            kjm_printfig(['figures' filesep fname '_cross_projections_by_trial'],[7 25])
-        end  
+    elseif art_rem.do=='n'
+        bad_trials=NaN;        
 
     end 
 
@@ -201,12 +219,14 @@ figure('Name','Data traces and time-resolved projection magnitudes','NumberTitle
     hold on, plot([t_win(1) t_win(end)],[0 0],'color',.3*[1 1 1])
     hold on, plot(crp_parms.parms_times,crp_parms.avg_trace_tR,'color',[1 1 0],'LineWidth',4) % 1st PC, scaling to RMS of classic CCEP   
     hold on, plot(t_win,mean(crp_projs.avg_trace_input,2),'k','LineWidth',2)
-    title(['t-value=' num2str(crp_projs.t_value) ', p-value=' num2str(crp_projs.p_value)])
+    title(['t-value=' num2str(crp_projs.t_value_tR) ', p-value=' num2str(crp_projs.p_value_tR)])
     ylabel('Voltage (\muV)')
     box off
     %
     subplot(1,2,2)
     hold on, plot(crp_projs.proj_tpts,crp_projs.S_all,'.','color',.3*[1 1 1])
+%     hold on, plot(max(max(crp_projs.S_all)),'.','color',.3*[1 1 1])
+%     hold on, plot(min(min(crp_projs.S_all)),'.','color',.3*[1 1 1])
     hold on, plot([0 t_win(end)],[0 0],'-','color',.6*[1 1 1],'LineWidth',2)    
     % this next one is to plot just the first cluster of projections over time as in Figure 3C (but for 1st cluster)
 %    hold on, plot(crp_projs.proj_tpts,crp_projs.S_all(1:(size(V,2)-1),:),'.','color',[28 164 201]/256,'MarkerSize',8) 
@@ -272,7 +292,7 @@ figure('Name','Single-trial parameterizations','NumberTitle','off')
     disp(['mean epep_root: ' num2str(mean(crp_parms.epep_root))])
     disp(['mean SNR: ' num2str(mean(crp_parms.Vsnr))])
     disp(['mean explained variance: ' num2str(mean(crp_parms.expl_var))])
-    disp(['Extraction significance t=' num2str(crp_projs.t_value) ', p=' num2str(crp_projs.p_value)])
+    disp(['Extraction significance t=' num2str(crp_projs.t_value_tR) ', p=' num2str(crp_projs.p_value_tR)])
     [~,tmp_p]=ttest(crp_parms.al);
     disp(['alpha coefficient significance p=' num2str(tmp_p)]), clear tmp_p
     disp('- - - - - - - - - - - - - - - - - - - - - - - - - - - -')
@@ -300,8 +320,23 @@ function [m,p]=trial_tests(crp_projs,art_rem,num_trials)
     m=[]; p=[];
     
     % initialize figure
-    figure('Name','Sorted cross-projections of different trials','NumberTitle','off')
+%     figure('Name','Sorted cross-projections of different trials','NumberTitle','off')
     
+    % % % This part accounts for double counting
+    stat_indices=1:2:(num_trials^2-num_trials); % indices used for statistics
+    if rem(num_trials,2)==1 %odd number of trials - need to offset every other column in original P matrix
+        b=0*stat_indices; %initializes what is indexed
+        for k=1:num_trials
+            if mod(k,2)==0 % offset what would have been every even column in original matrix
+               b(((k-1)*((num_trials-1)/2)+1):((k)*((num_trials-1)/2)))=1; 
+            end
+        end
+        %
+        stat_indices=stat_indices+b;    
+    end
+    excl_indices=setdiff([1:length(S_test)], stat_indices);
+    % % % End of part for double counting
+
     for q=1:num_trials
         %
         if q>1
@@ -313,19 +348,19 @@ function [m,p]=trial_tests(crp_projs,art_rem,num_trials)
         t_indices3=(q-1)*(num_trials-1)+[1:(num_trials-1)]; % projections of this trial into other trials
         %
         g_in=unique([t_indices1 t_indices2 t_indices3]); % projections involving this trial
-        g_out=setdiff([1:length(S_test)],g_in); % all other projections
+        g_out=setdiff([1:length(S_test)],[g_in excl_indices]); % all other projections
         %
         % get mean of this clusters projection for this trial normalized 
         [~,p(q)]=ttest2(S_test(g_in),S_test(g_out)); % unpaired t-test // note, this includes some c
         m(q)=mean(S_test(t_indices3)); % mean projection for this trial normalized 
         %
         % this plots the distributions for this cluster
-        subplot(num_trials,1,q)
-        plot(S_test,'k.','MarkerSize',15)
-        hold on, plot(t_indices1,S_test(t_indices1),'r.','MarkerSize',15)
-        hold on, plot(t_indices2,S_test(t_indices2),'r.','MarkerSize',15)
-        hold on, plot(t_indices3,S_test(t_indices3),'g.','MarkerSize',15)
-        title(['trial ' num2str(q) ', m=' num2str(m(q)) ', p=' num2str(p(q))]), box off
+%         subplot(num_trials,1,q)
+%         plot(S_test,'k.','MarkerSize',15)
+%         hold on, plot(t_indices1,S_test(t_indices1),'r.','MarkerSize',15)
+%         hold on, plot(t_indices2,S_test(t_indices2),'r.','MarkerSize',15)
+%         hold on, plot(t_indices3,S_test(t_indices3),'g.','MarkerSize',15)
+%         title(['trial ' num2str(q) ', m=' num2str(m(q)) ', p=' num2str(p(q))]), box off
         %    
         clear t_indices* g_in g_out
 

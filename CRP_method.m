@@ -21,8 +21,11 @@ function [crp_parms, crp_projs]=CRP_method(V,t_win)
 %     mean_proj_profile: mean projection magnitude profile
 %     var_proj_profile: variance in projection magnitude profile
 %     tR_index: index into proj_tpts (projection magnitude times) corresponding to response duration
-%     t_value: t-statistic for projection magnitudes at response duration (\tau_R)
-%     p_value: p-value at response duration, \tau_R (extraction significance) by t-test
+%     t_value_tR: t-statistic for projection magnitudes at response duration (\tau_R)
+%     p_value_tR: p-value at response duration, \tau_R (extraction significance) by t-test
+%     t_value_full: t-statistic for projection magnitudes at full time sent in    
+%     p_value_full: p-value at  full time sent in (extraction significance) by t-test
+%     stat_indices: indices used to calculate statistics (half of distribuition, with comparison pairs non-overlapping) 
 %
 % structure "crp_parms", with fields:
 %     V_tR: Reduced length voltage matrix (to response duration)
@@ -51,6 +54,7 @@ function [crp_parms, crp_projs]=CRP_method(V,t_win)
 % by Kai J. Miller, et. al., 2022
 %
 % Copyright (C) 2022 Kai J Miller
+% Revised by KJM March 2023 at time of manuscript re-submission 
 % 
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -92,6 +96,8 @@ function [crp_parms, crp_projs]=CRP_method(V,t_win)
     V_tR=V(1:proj_tpts(tt),:); % Reduced length voltage matrix (to response duration)
     [E_tR,~]=kt_pca(V_tR); % Linear kernel trick PCA method to capture structure
     C=E_tR(:,1); % 1st PC, canonical shape, C(t) from paper
+%     C=mean(V_tR,2); C=C/norm(C); disp('NOTE - USING RAW AVG INSTEAD OF 1st PC') % mean shape
+    
     %
     al=C.'*V_tR; % alpha coefficient weights for C into V
     ep=V_tR-C*al; % residual epsilon (error timeseries) after removal of form of CCEP        
@@ -106,14 +112,24 @@ function [crp_parms, crp_projs]=CRP_method(V,t_win)
     %
     crp_projs.tR_index=tt; % index into proj_tpts (projection magnitude times) corresponding to response duration
     %
-    % t-statistic at response duration \tau_R
-    crp_projs.t_value=mean(S_all(:,tt))/(std(S_all(:,tt))/sqrt(length(S_all(:,tt)))); % calculate t-statistic
-    %
-    % p-value at response duration \tau_R (extraction significance)
-    [~,crp_projs.p_value]=ttest(S_all(:,tt)); % simple t-test
-    %
-    crp_projs.avg_trace_input=mean(V,2); % simple average trace, over full time interval input
+    crp_projs.avg_trace_input=mean(V,2); % simple average trace, over full time interval input    
     
+    % significance statistics - note that have to send in only non-overlapping trials. each trial is represented half of the time as the normalized projected, and half as un-normalized projected-into
+    stat_indices=get_stat_indices(size(V,2));
+    crp_projs.stat_indices=stat_indices;
+    
+    % t-statistic at response duration \tau_R
+    crp_projs.t_value_tR=mean(S_all(stat_indices,tt))/(std(S_all(stat_indices,tt))/sqrt(length(S_all(stat_indices,tt)))); % calculate t-statistic
+
+    % p-value at response duration \tau_R (extraction significance)
+    [~,crp_projs.p_value_tR]=ttest(S_all(stat_indices,tt),0,'tail','right'); % simple t-test
+    
+    % t-statistic at full time sent in
+    crp_projs.t_value_full=mean(S_all(stat_indices,end))/(std(S_all(stat_indices,end))/sqrt(length(S_all(stat_indices,end)))); % calculate t-statistic
+
+    % p-value at  full time sent in (extraction significance)
+    [~,crp_projs.p_value_full]=ttest(S_all(stat_indices,end),0,'tail','right'); % simple t-test
+
         
     % % parameterizations % %
     crp_parms.V_tR=V_tR; % Reduced length voltage matrix (to response duration)
@@ -177,3 +193,34 @@ function [E,S]=kt_pca(X)
     %     ES=X*F.';
     ES=X*F; % kernel trick
     E=ES./(ones(size(X,1),1)*S); % divide through to obtain unit-normalized eigenvectors
+    
+    
+%% Function to Pick out indices of S to use for statistical comparison (so that projections between the same two trials are only compared once)
+function stat_indices=get_stat_indices(N)
+% This function picks out the indices of S that can be used for statistical comparison. 
+% For each trial, half of normalized projections to other trials are used and the other half trials are the projected into
+% ones. No overlapping comparison pairs are used. 
+%
+% kjm 3/2023
+%
+% Input: 
+% N, scalar - number of trials
+%
+% Output:
+% stat_indices (N^2-N,1) - vector of indices to be used for statistical comparison
+%
+% kjm, 3,2023
+
+stat_indices=1:2:(N^2-N); % indices used for statistics
+
+if rem(N,2)==1 %odd number of trials - need to offset every other column in original P matrix
+    b=0*stat_indices; %initializes what is indexed
+    for k=1:N
+        if mod(k,2)==0 % offset what would have been every even column in original matrix
+           b(((k-1)*((N-1)/2)+1):((k)*((N-1)/2)))=1; 
+        end
+    end
+    %
+    stat_indices=stat_indices+b;    
+end
+    
